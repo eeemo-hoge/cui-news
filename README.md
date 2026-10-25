@@ -17,30 +17,6 @@
 22:46 [内] РИА Новости  ВС России поразили в Одесской области цех производства дронов
 ```
 
-## v2.4 で変わったこと
-
-- 英語の見出しも、やさしい単語のくだけた英語に言い換えるようにしました。
-- 見出しの大文字をなくしました(英語・ロシア語、日本語の中の英字も)。`--keep-case` で残せます。
-
-## v2.3 で変わったこと
-
-- 日本語の見出しを、流す前に毎回やわらかい口調に変えるようにしました(下の「やわらかい口調で流す」)。保存する記事は原文のままです。
-
-## v2.2 で変わったこと
-
-- 3件の縛りを10件に緩めました: 起動時は直近10件、更新1回につき新着は10件まで(`-n` / `-m` で変更)。
-
-## v2.1 で変わったこと
-
-- Android (Termux) でそのまま流せるようにしました。幅72桁未満の画面では自動で2段表示(1段目: 時刻・国・媒体・ID / 2段目: 見出し)になります。PC でも `--compact` で同じ表示にできます。
-- Termux では記事を `termux-open-url` で Android のブラウザに開きます。
-- 折り返しで「、」や「）」が行頭に来ないようにしました。
-
-## v2.0 で変わったこと
-
-- 端末の表示を絞りました: 起動時は直近3件、更新1回につき新着は3件まで(`-n` / `-m` で変更、`m` で残りを出す)。
-- 保存・検索・書き出し・スマホ向けページは今までどおり全件を扱います。
-
 ## 入れ方
 
 Python 3.8 以上があれば、追加のライブラリは要りません(標準ライブラリだけ)。
@@ -406,7 +382,104 @@ news --translate --orig                         # 原文も下に出す
 | あとで読む | `~/.local/share/news/later.tsv` (外したものは `later.done.tsv`) | 同上 |
 | HTTP キャッシュ・既読・印刷用の一時ファイル | `~/.local/share/news/state/` | 同上 |
 
-## なぜ Python か
+ライセンスはLISCENCEを参照。
 
-最初は `news.sh` も考えましたが、RSS / RDF / Atom の3形式、Shift_JIS・GBK・windows-1251 といった文字コード、`&nbsp;` などが混じって XML として壊れたフィードを sh + curl + xmllint で扱うと壊れやすいので、依存ゼロで済む Python 1ファイルにしました(壊れたフィードは、直して読む → それでも駄目なら正規表現で拾う、の順で読みます)。
-中身は外部コマンドとよく組み合わさるように作ってあります(TSV で保存、cron で取得、lp で印刷、tmux で分割、trans で翻訳)。
+# news — A news feed that displays side-by-side views of “that country as seen from the outside” and “inside that country”
+
+News is curated from two perspectives for each country.
+
+| Perspective | Display | Content | Example (Japan) |
+|---|---|---|---|
+| `out` | **Outside** | That country as seen from abroad (foreign media, English-language newspapers for foreigners) | Japan Today, The Japan Times |
+| `in`  | **Inside** | Domestic media viewed by many people in that country (including business newspapers) | NHK, Yahoo! News, Nikkei, Toyo Keizai |
+
+The system comes pre-loaded with four countries: Japan, the United States, China, and Russia (23 feeds). You can add more countries by simply adding one line at a time to the configuration file.
+
+```
+━━ Russia External The Moscow Times, Meduza (EN) │ Internal RIA Novosti, TASS, RBC, Lenta.ru
+──────────────── September 29, 2026 (Tue) ──────────── ────
+10:24 PM [Domestic] RIA Novosti  Court sentences Altai resident who stole 96 roses
+10:31 PM [International] Meduza (EN)   Putin claims Ukraine has no antidote to jet drones
+10:46 PM [Domestic] RIA Novosti  Russian Armed Forces strike drone production facility in Odessa region
+```
+
+## How to Install
+
+If you have Python 3.8 or later, no additional libraries are required (only the standard library).
+
+```sh
+install -Dm755 news ~/.local/bin/news
+news check          # First, check if all feeds can be retrieved
+news                # Display all countries in a single timeline
+```
+
+The file `~/.config/news/feeds.tsv` is created upon first launch.
+
+Available features:
+
+| Purpose | Arch | Mint / Ubuntu |
+|---|---|---|
+| 4-way split (`wall`) | `pacman -S tmux` | `apt install tmux` |
+| Print (`print`) | `pacman -S cups` | `apt install cups-client` |
+| PDF | `pacman -S python-weasyprint` or Chromium | `apt install weasyprint` or Chromium |
+| Translation (`--translate`) | `pacman -S translate-shell` | `apt install translate-shell` |
+| AI-powered soft translation (`--soft ollama`) | `pacman -S ollama` | installer from ollama.com |
+
+## Stream (Timeline)
+
+```sh
+news                          # All
+news -c jp,ru                 # Filter by country
+news -c cn -l in              # Only Chinese domestic media
+news --hl ‘NVIDIA|crude oil’ --bell # Play an alert sound with emphasis, like a chat mention
+news --filter ‘Iran|Iran’    # Stream only matching results
+news --links                  # Display URLs below headlines (see “Open Articles of Interest” below)
+news --translate              # Translate headlines without kana into Japanese (translate-shell)
+news --interval 60            # Retrieval interval (seconds; default 90)
+```
+
+When launched, it first displays the most recent **10** items, and then streams **up to 10** new items (starting with the newest) with each update.
+Items exceeding the 10-item limit are simply not displayed on the screen, but they are still saved (you can retrieve them with `news grep`). If you type `m` while the feed is running, you can display the items that weren’t shown, 10 at a time starting with the newest (`m 20` displays 20 items). The number of remaining items appears in the terminal title as `(+5: m)`.
+
+```sh
+news -n 3 -m 3      # v2.0’s 3-item limit
+news -n 20          # Number of items to display at startup (default 10)
+news -m 20          # Maximum number of new items displayed per update (default 10)
+news -n 30 -m 0     # Behaves like v1 (30 items on startup, unlimited new items)
+news --truncate     # Forces each article to fit on a single line without wrapping long headlines
+```
+
+The `news wall` pane also uses the same defaults (10 items per pane / 10 items total), and the `-n` and `-m` options can be passed directly.
+Since RSS is not a push service, “immediate” delivery depends on the retrieval interval. To be server-friendly, it uses conditional retrieval based on ETag and If-Modified-Since; if there are no changes, the body text is not downloaded.
+
+## Deliver in a casual tone
+
+Japanese and English headlines are converted to conversational language and capital letters are removed immediately before being displayed on screen (enabled by default).
+
+```
+Nikkei Breaking News: NY Dow falls 347 dollars; Boeing and Salesforce shares drop
+       → U.S. stock prices fell 347 dollars—apparently Boeing and Salesforce shares dropped!
+NHK      Kumamoto Earthquake: “Water, Ice, and Boxed Lunches”—180 Kilometers of Gas Pipes to Be Restored
+       → Kumamoto Earthquake: “Water, Ice, and Boxed Lunches”—it looks like they’re going to restore 180 kilometers of gas pipes!
+         [Breaking News] Prime Minister Announces Resignation
+       → Breaking news! Apparently, the Prime Minister has announced he’s stepping down!
+Japan Today  China’s Wang Tells Former Japanese Foreign Minister That Bilateral Ties Need to Be Normalized
+       → China’s Wang tells former Japanese foreign minister that relations need to get back to normal, apparently
+Meduza   Russian Pizza Chain Dodo Pizza Says Hackers Breached Its Systems
+       → Russian pizza chain Dodo Pizza says hackers broke into its systems, according to the company
+```
+
+- Only the on-screen display changes. Saved articles, `news grep`, exports, and mobile pages remain in the original text.
+- Only Japanese and English headlines are rephrased. Chinese and Russian headlines are not rephrased (Russian headlines are simply converted to lowercase). Translations generated with `--translate` are softened.
+- All uppercase letters are removed. Use `--keep-case` if you want to keep them.
+- Use `news --orig` to display the original text side-by-side below. Use `news --no-soft` or set `NEWS_SOFT=off` to display the original text as-is.
+
+**There are four ways to configure this** (use either the `--soft` option or the environment variable `NEWS_SOFT=` to always use that method)
+
+| Method | Description | Requirements |
+|---|---|---|
+| `rule` (default) | Rewrites using a dictionary (e.g., “Prime Minister” → “the country’s highest-ranking official,” “decline” → “fell,” “bilateral ties” → “relations,” “plunged” → “dropped hard,” etc.) + adds endings like “~-like!” “~-they-say!” “~-seems!” / “, apparently,” “, they say” | None. Offline, instant |
+| `ollama` / `ollama:model_name` | Rewrite into natural sentences using a local AI | Ollama (default model is `qwen2.5:7b`) |
+
+
+Translated with DeepL.com (free version)
