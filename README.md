@@ -484,5 +484,4 @@ Meduza   Russian Pizza Chain Dodo Pizza Says Hackers Breached Its Systems
 
 Translated with DeepL.com (free version)
 
-[description](LICENSE)
 license is "[LICENSE](LICENSE)"
